@@ -1,0 +1,202 @@
+
+.angular-cli.json
+==============
+{  "$schema": "./node_modules/@angular/cli/lib/config/schema.json",  "project": {    "name": "spectrum-frontend"  },  "apps": [{    "root": "src",    "outDir": "dist",    "assets": [      "assets",      "favicon.ico"    ],    "index": "index.html",    "main": "main.ts",    "polyfills": "polyfills.ts",    "test": "test.ts",    "tsconfig": "tsconfig.app.json",    "testTsconfig": "tsconfig.spec.json",    "prefix": "app",    "styles": [      "../node_modules/bootstrap/dist/css/bootstrap.min.css",      "spectrum.customized.styles.css"    ],    "scripts": [],    "environmentSource": "environments/environment.ts",    "environments": {      "dev": "environments/environment.ts",      "prod": "environments/environment.prod.ts"    }  }],  "e2e": {    "protractor": {      "config": "./protractor.conf.js"    }  },  "lint": [{      "project": "src/tsconfig.app.json"    },    {      "project": "src/tsconfig.spec.json"    },    {      "project": "e2e/tsconfig.e2e.json"    }  ],  "test": {    "karma": {      "config": "./karma.conf.js"    }  },  "defaults": {    "styleExt": "css",    "component": {}  }}
+
+=============
+jenkinsfile
+-----------
+#!groovy//@Library("hyperloop@1.0.0-RC3") _//List of all versions: https://uk-gitlab.almuk.santanderuk.corp/hyperloop/hyperloop-library/tags// NOTE: Following line is for testing only, for your project use the line above@Library("hyperloop@master") _//Node Project with NodeJS 6// NOTE: This doesn't work with branch names containing slashes '/' due to the way .zip file is generated, 'Build Image' stage will fail.pipeline {    agent { label 'nodejs6' }    parameters {        string(name: 'NAME_PREFIX', defaultValue: 'nodejs', description: 'Application name prefix, to allow running multiple instances in parallel')    }    environment {        // For testing you can set specific branch:        //BRANCH_NAME="extended-build"        // NOTE: Line below is done for testing with multiple branches only, replace with your desired app name string        // Some OpenShift names are limited to 24 characters and must end with alphanumeric character        APP_NAME="${params.NAME_PREFIX}-${BRANCH_NAME.replaceAll('/', '-').take(21-params.NAME_PREFIX.length())}-a"    }    stages {        stage ('Get Source Code') {            steps {                checkout scm                // For manual testing use the following line instead:                //git branch: BRANCH_NAME, changelog: false, poll: false, url: 'https://uk-gitlab.almuk.santanderuk.corp/hyperloop/reference-project-nodejs6-npm-server.git'            }        }        stage ('Test, Build & Deploy') {            steps {                sh ("npm install")            }        }        stage ("Unit Test") {            steps {                sh ("npm test")            }        }        stage ('Build Image') {            steps {                // NOTE: This doesn't work with branch names containing slashes '/' due to the way .zip file is generated                hlBuildImage ('NodeJSCorporateImage',                    [appName: APP_NAME,                    sourceUrl: "https://uk-gitlab.almuk.santanderuk.corp/hyperloop/reference-project-nodejs6-npm-server/repository/archive.zip?ref=${BRANCH_NAME}"])            }        }        stage ('Deploy Image') {            steps {                hlDeployImage ('NodeJSCorporateImage', [appName: APP_NAME])            }        }        stage ('Verify Deployment') {            steps {                openshiftVerifyDeployment(depCfg: APP_NAME, replicaCount: '1', verbose: 'false', verifyReplicaCount: 'true', waitTime: '300', waitUnit: 'sec')            }        }        stage ('Verify Service') {            steps {                openshiftVerifyService(svcName: APP_NAME, verbose: 'false')            }        }           }    }
+==============
+ karma-config.js
+ =============
+ // Karma configuration file, see link for more information
+// https://karma-runner.github.io/0.13/config/configuration-file.html
+// singleRun : true -- enables jenkins job to exit the npm test from shell.
+module.exports = function (config) {
+  config.set({
+    basePath: '',
+    frameworks: ['mocha', 'chai', 'sinon', '@angular/cli'],
+    plugins: [
+      require('karma-mocha'),
+      require('karma-chai'),
+      require('karma-sinon'),
+      require('karma-mocha-reporter'),
+      require('karma-phantomjs-launcher'),
+      require('@angular/cli/plugins/karma')
+    ],
+    files: [
+      { pattern: './src/test.ts', watched: false }
+    ],
+    preprocessors: {
+      './src/test.ts': ['@angular/cli']
+    },
+    reporters: [
+      'mocha'
+    ],
+    mime: {
+      'text/x-typescript': ['ts','tsx']
+    },
+    angularCli: {
+      config: './angular-cli.json',
+      environment: 'dev'
+    },
+    port: 9876,
+    colors: true,
+    logLevel: config.LOG_INFO,
+    autoWatch: true,
+    browsers: ['PhantomJS'],
+    singleRun: true    // please use false at your local copy
+  });
+};
+========================
+ package.json
+ ===================
+{  "name": "spectrum-frontend",  "version": "1.0.0",  "description": "Application for a Santandar Business Credit Card",  "license": "MIT",  "scripts": {    "ng": "ng",    "start": "ng serve",    "build": "ng build",    "test": "ng test",    "lint": "ng lint"  },  "private": true,  "dependencies": {    "@angular/animations": "^4.0.0",    "@angular/common": "^4.0.0",    "@angular/compiler": "^4.0.0",    "@angular/core": "^4.0.0",    "@angular/forms": "^4.0.0",    "@angular/http": "^4.0.0",    "@angular/platform-browser": "^4.0.0",    "@angular/platform-browser-dynamic": "^4.0.0",    "@angular/platform-server": "^4.0.0",    "@angular/router": "^4.0.0",    "angular-in-memory-web-api": "~0.3.0",    "bootstrap": "^3.3.7",    "core-js": "^2.4.1",    "ie-shim": "0.1.0",    "rxjs": "^5.2.0",    "systemjs": "^0.19.47",    "zone.js": "^0.8.5"  },  "devDependencies": {    "@angular/cli": "latest",    "@angular/compiler-cli": "^4.0.0",    "@types/chai": "^4.0.1",    "@types/mocha": "^2.2.41",    "@types/node": "~6.0.60",    "@types/sinon": "^2.3.2",    "chai": "^4.0.2",    "codelyzer": "~3.0.1",    "karma": "~1.7.0",    "karma-chai": "^0.1.0",    "karma-cli": "~1.0.1",    "karma-mocha": "^1.3.0",    "karma-mocha-reporter": "^2.2.3",    "karma-phantomjs-launcher": "^1.0.4",    "karma-sinon": "^1.0.5",    "mocha": "^3.4.2",    "sinon": "^2.3.6",    "ts-node": "~3.0.4",    "tslint": "~5.3.2",    "typescript": "~2.3.3"  }}
+
+===================
+
+tsconfig.json
+===============
+
+{  "compileOnSave": false,  "compilerOptions": {    "outDir": "./dist/out-tsc",    "baseUrl": "src",    "sourceMap": true,    "declaration": false,    "moduleResolution": "node",    "emitDecoratorMetadata": true,    "experimentalDecorators": true,    "target": "es5",    "typeRoots": [      "./node_modules/@types"    ],    "lib": [      "es2016",      "dom"    ]  }}
+
+=================
+ tslint.json
+ ==================
+ {
+  "rulesDirectory": [
+    "./node_modules/codelyzer"
+  ],
+  "rules": {
+    "arrow-return-shorthand": true,
+    "callable-types": true,
+    "class-name": true,
+    "comment-format": [
+      true,
+      "check-space"
+    ],
+    "curly": true,
+    "eofline": true,
+    "forin": true,
+    "import-blacklist": [
+      true,
+      "rxjs"
+    ],
+    "import-spacing": true,
+    "indent": [
+      true,
+      "spaces"
+    ],
+    "interface-over-type-literal": true,
+    "label-position": true,
+    "max-line-length": [
+      true,
+      140
+    ],
+    "member-access": false,
+    "member-ordering": [
+      true,
+      "static-before-instance",
+      "variables-before-functions"
+    ],
+    "no-arg": true,
+    "no-bitwise": true,
+    "no-console": [
+      true,
+      "debug",
+      "info",
+      "time",
+      "timeEnd",
+      "trace"
+    ],
+    "no-construct": true,
+    "no-debugger": true,
+    "no-duplicate-super": true,
+    "no-empty": false,
+    "no-empty-interface": true,
+    "no-eval": true,
+    "no-inferrable-types": [
+      true,
+      "ignore-params"
+    ],
+    "no-misused-new": true,
+    "no-non-null-assertion": true,
+    "no-shadowed-variable": true,
+    "no-string-literal": false,
+    "no-string-throw": true,
+    "no-switch-case-fall-through": true,
+    "no-trailing-whitespace": true,
+    "no-unnecessary-initializer": true,
+    "no-unused-expression": true,
+    "no-use-before-declare": true,
+    "no-var-keyword": true,
+    "object-literal-sort-keys": false,
+    "one-line": [
+      true,
+      "check-open-brace",
+      "check-catch",
+      "check-else",
+      "check-whitespace"
+    ],
+    "prefer-const": true,
+    "quotemark": [
+      true,
+      "single"
+    ],
+    "radix": true,
+    "semicolon": [
+      "always"
+    ],
+    "triple-equals": [
+      true,
+      "allow-null-check"
+    ],
+    "typedef-whitespace": [
+      true,
+      {
+        "call-signature": "nospace",
+        "index-signature": "nospace",
+        "parameter": "nospace",
+        "property-declaration": "nospace",
+        "variable-declaration": "nospace"
+      }
+    ],
+    "typeof-compare": true,
+    "unified-signatures": true,
+    "variable-name": false,
+    "whitespace": [
+      true,
+      "check-branch",
+      "check-decl",
+      "check-operator",
+      "check-separator",
+      "check-type"
+    ],
+    "directive-selector": [
+      true,
+      "attribute",
+      "app",
+      "camelCase"
+    ],
+    "component-selector": [
+      true,
+      "element",
+      "app",
+      "kebab-case"
+    ],
+    "use-input-property-decorator": true,
+    "use-output-property-decorator": true,
+    "use-host-property-decorator": true,
+    "no-input-rename": true,
+    "no-output-rename": true,
+    "use-life-cycle-interface": true,
+    "use-pipe-transform-interface": true,
+    "component-class-suffix": true,
+    "directive-class-suffix": true,
+    "no-access-missing-member": true,
+    "templates-use-public": true,
+    "invoke-injectable": true
+  }
+}
+
